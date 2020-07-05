@@ -33,6 +33,21 @@ def utc_to_nyc(utc_datetime):
     # print("\n".join(pytz.common_timezones))
     return(utc_datetime.astimezone(pytz.timezone("America/New_York")))
 
+# returns db and stocks_collection
+def mongo_initialize():
+    mongo_client = pymongo.MongoClient()
+    db = mongo_client.finances_db
+    stocks_collection = db.stocks
+    return(db, stocks_collection)
+
+def insert_docs(collection, doc_array):
+    results = {}
+    for item in doc_array:
+        result = collection.insert_one(item)
+        results[item] = result
+
+    print(results)
+
 # for getting current stock info based on stocks in environment
 def stock_quote(environment):
     # Parameters for query string
@@ -61,6 +76,9 @@ def stock_quote(environment):
 
     return(stock_info)
 
-environment = iex_environtment_selection("")
 
-# stock_quote(environment)
+environment = iex_environtment_selection("")
+db, stocks_collection = mongo_initialize()
+stock_info = stock_quote(environment)
+# print(stock_info)
+insert_docs(stocks_collection, stock_info)
