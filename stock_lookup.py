@@ -1,4 +1,5 @@
 import requests
+import pymongo
 import json
 import datetime
 import pytz
@@ -62,4 +63,4 @@ def stock_quote(environment):
 
 environment = iex_environtment_selection("")
 
-stock_quote(environment)
+# stock_quote(environment)
