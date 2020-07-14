@@ -11,16 +11,19 @@ def iex_environtment_selection(env):
 
     if env == "prod":
         environment = {
+            "env": "prod",
             "base_url": "https://cloud.iexapis.com/stable",
             "iex_secret": config["iex_token"]["production"],
-            "stocks": ['AAXN', 'MRNA', 'AMZN', 'VOO', 'VTI']
+            "stocks": ['AAXN', 'MRNA', 'AMZN', 'VOO', 'VTI'],
         }
     else:
         environment = {
+            "env": "sandbox",
             "base_url": "https://sandbox.iexapis.com/stable",
             "iex_secret": config["iex_token"]["sandbox"],
-            "stocks": ['AMZN', 'VOO']
+            "stocks": ['AMZN', 'VOO'],
         }
+    print("Environment is {}".format(environment["env"]))
     return(environment)
 
 # returns datetime object with utc time from a time given in milliseconds
@@ -34,51 +37,73 @@ def utc_to_nyc(utc_datetime):
     return(utc_datetime.astimezone(pytz.timezone("America/New_York")))
 
 # returns db and stocks_collection
-def mongo_initialize():
+def mongo_initialize(environment):
+    print("Initializing mongo...")
     mongo_client = pymongo.MongoClient()
-    db = mongo_client.finances_db
+    if environment == "prod":
+        db = mongo_client.finances_db
+    else:
+        db = mongo_client.finances_db_test
     stocks_collection = db.stocks
     return(db, stocks_collection)
 
-def insert_docs(collection, doc_array):
-    results = {}
-    for item in doc_array:
-        result = collection.insert_one(item)
-        results[item] = result
-
-    print(results)
-
 # for getting current stock info based on stocks in environment
 def stock_quote(environment):
+    print("Getting stock quotes...")
     # Parameters for query string
     params = {
         "token": environment["iex_secret"]
         # "symbols": environment["stocks"]
     }
     stock_info = {}
+    stock_count = 0
 
     # TODO: https://iexcloud.io/docs/api/#batch-requests
     for stock in environment["stocks"]:
         print("\nAPI call: ",environment["base_url"]+"/stock/{}/quote".format(stock))
-        req = requests.get(
-            environment["base_url"]+"/stock/{}/quote".format(stock),
-            params
-        )
-        print(req.status_code)
-        stock_info[stock] = req.json() #type == dictionary
-        for key in stock_info[stock]:
-            print(key,":",stock_info[stock][key])
-            if ("Time" in key and
-                key != "latestTime" and
-                stock_info[stock][key] != None):
-                market_time = utc_to_nyc(epoch_to_utc(stock_info[stock][key]))
-                print(key,":",market_time)
+        try:
+            req = requests.get(
+                environment["base_url"]+"/stock/{}/quote".format(stock),
+                params
+            )
+            print(req.status_code)
+            stock_info[stock] = req.json() #type == dictionary
+            stock_count += 1
+        except Exception as err:
+            print("Unable to complete Request")
+            raise
+        else:
+            for key in stock_info[stock]:
+                print(key,":",stock_info[stock][key])
+                if ("Time" in key and
+                    key != "latestTime" and
+                    stock_info[stock][key] != None):
+                    market_time = utc_to_nyc(epoch_to_utc(stock_info[stock][key]))
+                    print(key,":",market_time)
 
+    print(stock_count)
     return(stock_info)
 
+def insert_docs(collection, doc_array):
+    print("Inserting stocks into Mongo...")
+    results = {}
+    try:
+        for item in doc_array:
+            print(doc_array[item])
+            result = collection.insert_one(doc_array[item])
+            results[item] = result
+    except Exception as err:
+        raise
+    else:
+        print(results)
 
-environment = iex_environtment_selection("")
-db, stocks_collection = mongo_initialize()
-stock_info = stock_quote(environment)
-# print(stock_info)
-insert_docs(stocks_collection, stock_info)
+try:
+    environment = iex_environtment_selection("")
+    db, stocks_collection = mongo_initialize(environment["env"])
+    stock_info = stock_quote(environment)
+    insert_docs(stocks_collection, stock_info)
+except:
+    print("Too bad.")
+    raise
+finally:
+    print("Have a nice day!")
