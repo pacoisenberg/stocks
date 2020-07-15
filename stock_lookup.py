@@ -105,7 +105,7 @@ def insert_docs(collection, doc_array):
         raise
     else:
         for result in results:
-            print(results[result])
+            print(f"{result}: {results[result].inserted_id}")
 
 if __name__ == '__main__':
     try:
@@ -117,4 +117,4 @@ if __name__ == '__main__':
         print("Too bad.")
         raise
     finally:
-        print(f'You used the {environment["env"]} environment.')
+        print(f'Used the {environment["env"]} environment.')
