@@ -23,7 +23,7 @@ def iex_environtment_selection(env):
             "iex_secret": config["iex_token"]["sandbox"],
             "stocks": ['AMZN', 'VOO'],
         }
-    print("Environment is {}".format(environment["env"]))
+    print(f"Environment is {environment['env']}.")
     return(environment)
 
 # returns datetime object with utc time from a time given in milliseconds
@@ -36,18 +36,36 @@ def utc_to_nyc(utc_datetime):
     # print("\n".join(pytz.common_timezones))
     return(utc_datetime.astimezone(pytz.timezone("America/New_York")))
 
+# Takes a dict with keys with 'time' in the name values in milliseconds
+# and replaces it with a datetime object
+def change_stock_info_to_market_time(stock_dict):
+    for stock_key in stock_dict:
+        print(stock_key,":",stock_dict[stock_key])
+        if ("Time" in stock_key and
+            stock_key != "latestTime" and
+            stock_dict[stock_key] != None):
+            stock_dict[stock_key] = utc_to_nyc(epoch_to_utc(stock_dict[stock_key]))
+            print(stock_key,":",stock_dict[stock_key])
+    return stock_dict
+
 # returns db and stocks_collection
 def mongo_initialize(environment):
     print("Initializing mongo...")
-    mongo_client = pymongo.MongoClient()
-    if environment == "prod":
-        db = mongo_client.finances_db
+    mongo_client = pymongo.MongoClient(serverSelectionTimeoutMS = 10)
+    try:
+        mongo_client.server_info()
+    except Exception as err:
+        print(err)
+        print("Connection to mongodb failed. Try starting the server")
     else:
-        db = mongo_client.finances_db_test
-    stocks_collection = db.stocks
-    return(db, stocks_collection)
+        if environment == "prod":
+            db = mongo_client.finances_db
+        else:
+            db = mongo_client.finances_db_test
+        stocks_collection = db.stocks
+        return(db, stocks_collection)
 
-# for getting current stock info based on stocks in environment
+# returns current stock info based on stocks in environment
 def stock_quote(environment):
     print("Getting stock quotes...")
     # Parameters for query string
@@ -56,54 +74,47 @@ def stock_quote(environment):
         # "symbols": environment["stocks"]
     }
     stock_info = {}
-    stock_count = 0
 
     # TODO: https://iexcloud.io/docs/api/#batch-requests
     for stock in environment["stocks"]:
-        print("\nAPI call: ",environment["base_url"]+"/stock/{}/quote".format(stock))
+        print(f'\nAPI Call: {environment["base_url"]}/stock/{stock}/quote')
         try:
             req = requests.get(
-                environment["base_url"]+"/stock/{}/quote".format(stock),
+                f'{environment["base_url"]}/stock/{stock}/quote',
                 params
             )
             print(req.status_code)
             stock_info[stock] = req.json() #type == dictionary
-            stock_count += 1
         except Exception as err:
-            print("Unable to complete Request")
+            print("Unable to complete IEX Request")
             raise
         else:
-            for key in stock_info[stock]:
-                print(key,":",stock_info[stock][key])
-                if ("Time" in key and
-                    key != "latestTime" and
-                    stock_info[stock][key] != None):
-                    market_time = utc_to_nyc(epoch_to_utc(stock_info[stock][key]))
-                    print(key,":",market_time)
+            stock_info[stock] = change_stock_info_to_market_time(stock_info[stock])
 
-    print(stock_count)
     return(stock_info)
 
+#insert all of the stock quote information into mongodb
 def insert_docs(collection, doc_array):
     print("Inserting stocks into Mongo...")
     results = {}
     try:
         for item in doc_array:
-            print(doc_array[item])
             result = collection.insert_one(doc_array[item])
             results[item] = result
     except Exception as err:
         raise
     else:
-        print(results)
+        for result in results:
+            print(results[result])
 
-try:
-    environment = iex_environtment_selection("")
-    db, stocks_collection = mongo_initialize(environment["env"])
-    stock_info = stock_quote(environment)
-    insert_docs(stocks_collection, stock_info)
-except:
-    print("Too bad.")
-    raise
-finally:
-    print("Have a nice day!")
+if __name__ == '__main__':
+    try:
+        environment = iex_environtment_selection("")
+        db, stocks_collection = mongo_initialize(environment["env"])
+        stock_info = stock_quote(environment)
+        insert_docs(stocks_collection, stock_info)
+    except:
+        print("Too bad.")
+        raise
+    finally:
+        print(f'You used the {environment["env"]} environment.')
