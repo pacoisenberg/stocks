@@ -73,7 +73,7 @@ def stock_quote(environment):
         "token": environment["iex_secret"]
         # "symbols": environment["stocks"]
     }
-    stock_info = {}
+    stock_info = []
 
     # TODO: https://iexcloud.io/docs/api/#batch-requests
     for stock in environment["stocks"]:
@@ -84,23 +84,22 @@ def stock_quote(environment):
                 params
             )
             print(req.status_code)
-            stock_info[stock] = req.json() #type == dictionary
+            stock_info.append(req.json()) #type == dictionary
         except Exception as err:
             print("Unable to complete IEX Request")
             raise
         else:
-            stock_info[stock] = change_stock_info_to_market_time(stock_info[stock])
-
+            stock_info.append(change_stock_info_to_market_time(stock_info.pop()))
     return(stock_info)
 
 #insert all of the stock quote information into mongodb
-def insert_docs(collection, doc_array):
+def insert_docs(collection, dict_array):
     print("Inserting stocks into Mongo...")
     results = {}
     try:
-        for item in doc_array:
-            result = collection.insert_one(doc_array[item])
-            results[item] = result
+        for stock_dict in dict_array:
+            result = collection.insert_one(stock_dict)
+            results[stock_dict["symbol"]] = result
     except Exception as err:
         raise
     else:
@@ -109,7 +108,7 @@ def insert_docs(collection, doc_array):
 
 if __name__ == '__main__':
     try:
-        environment = iex_environtment_selection("")
+        environment = iex_environtment_selection("prod")
         db, stocks_collection = mongo_initialize(environment["env"])
         stock_info = stock_quote(environment)
         insert_docs(stocks_collection, stock_info)
