@@ -1,18 +1,25 @@
 import pymongo
+from stock_lookup import mongo_initialize, iex_environtment_selection
 import pprint
 
-client = pymongo.MongoClient()
+def get_stock_info():
+    print("getting stock info from mongo")
+    stock = stocks_collection.find_one()
 
-db = client.finances_db_test
+    print(type(stock))
+    print(f'{stock}')
 
-stocks_collection = db.stocks
+    pprint.pprint(stock)
 
-stock = stocks_collection.find_one()
+if __name__ == '__main__':
+    try:
+        environment = iex_environtment_selection()
+        db, stocks_collection = mongo_initialize(environment["env"])
+        get_stock_info()
 
-print(type(stock))
-print(f'{stock}')
+    except:
+        print("Didn't work")
+        raise
 
-pprint.pprint(stock)
-print("====================")
-
-print(stocks_collection.database)
+    finally:
+        print(f'Used the {environment["env"]} environment.')

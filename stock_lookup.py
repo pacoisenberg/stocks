@@ -5,11 +5,11 @@ import datetime
 import pytz
 
 # returns dictionary with keys "base_url", "iex_secret", "stocks"
-def iex_environtment_selection(env):
+def iex_environtment_selection():
     with open("config.json", 'r') as json_data_file:
         config = json.load(json_data_file)
 
-    if env == "prod":
+    if config["env"] == "prod":
         environment = {
             "env": "prod",
             "base_url": "https://cloud.iexapis.com/stable",
@@ -108,7 +108,7 @@ def insert_docs(collection, dict_array):
 
 if __name__ == '__main__':
     try:
-        environment = iex_environtment_selection("prod")
+        environment = iex_environtment_selection()
         db, stocks_collection = mongo_initialize(environment["env"])
         stock_info = stock_quote(environment)
         insert_docs(stocks_collection, stock_info)
