@@ -62,10 +62,12 @@ def mongo_initialize(environment):
             db = mongo_client.finances_db
         else:
             db = mongo_client.finances_db_test
-        stocks_collection = db.stocks
-        return(db, stocks_collection)
+        collections = {}
+        collections["stocks_collection"] = db.stocks
+        collections["configValues_collection"] = db.configValues
+        return(db, collections)
 
-# returns current stock info based on stocks in environment
+# returns current stock info based on stocks in environment and the message credits used
 def stock_quote(environment):
     print("Getting stock quotes...")
     # Parameters for query string
@@ -74,6 +76,7 @@ def stock_quote(environment):
         # "symbols": environment["stocks"]
     }
     stock_info = []
+    iex_current_message_count = 0
 
     # TODO: https://iexcloud.io/docs/api/#batch-requests
     for stock in environment["stocks"]:
@@ -84,13 +87,15 @@ def stock_quote(environment):
                 params
             )
             print(req.status_code)
+            iex_current_message_count += int(req.headers["iexcloud-messages-used"])
             stock_info.append(req.json()) #type == dictionary
         except Exception as err:
             print("Unable to complete IEX Request")
             raise
         else:
             stock_info.append(change_stock_info_to_market_time(stock_info.pop()))
-    return(stock_info)
+    print(f'This call used {iex_current_message_count} message credits.')
+    return(stock_info, iex_current_message_count)
 
 #insert all of the stock quote information into mongodb
 def insert_docs(collection, dict_array):
@@ -106,12 +111,32 @@ def insert_docs(collection, dict_array):
         for result in results:
             print(f"{result}: {results[result].inserted_id}")
 
+def update_message_count(configValues_collection, iex_messages):
+    print("Updating message count in mongo")
+    try:
+        result = configValues_collection.update_one(
+            {"messages" : "iex"},
+            {"$inc":{"message_count": iex_messages}}
+            )
+    except Exception as err:
+        raise
+    else:
+        updated_doc = configValues_collection.find_one({"messages":"iex"})
+        print (f"{updated_doc['message_count']} message credits "
+                f"have been used since last cleared.")
+
+        if updated_doc['message_count'] > 45000:
+            print("If you are using prod, you are getting close to the monthly limit")
+
 if __name__ == '__main__':
     try:
         environment = iex_environtment_selection()
-        db, stocks_collection = mongo_initialize(environment["env"])
-        stock_info = stock_quote(environment)
-        insert_docs(stocks_collection, stock_info)
+        db, collections = mongo_initialize(environment["env"])
+        stock_info, iex_message_use = stock_quote(environment)
+        insert_docs(collections["stocks_collection"], stock_info)
+        update_message_count(collections["configValues_collection"], iex_message_use)
+        if iex_message_use > 100:
+            print(f"This call used {iex_message_use} messages. Do you know what you're doing?")
     except:
         print("Too bad.")
         raise
